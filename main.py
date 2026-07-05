@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import time
-from mistralai import Mistral
+from mistralai.client import Mistral
 
 # Import your tools
 import functions 
