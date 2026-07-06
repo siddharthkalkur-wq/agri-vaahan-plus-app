@@ -64,7 +64,16 @@ if prompt and "mistral_client" in st.session_state:
     
     with st.spinner("Analyzing..."):
         # Format history for Mistral
-        messages = [{"role": m["role"], "content": m["content"]} for m in st.session_state["chat_history"]]
+        messages = []
+        for m in st.session_state["chat_history"]:
+            if isinstance(m, dict):
+                messages.append(m)
+            else:
+                # Safely convert Mistral's Python objects back into network dictionaries
+                msg_dict = {"role": getattr(m, "role", ""), "content": getattr(m, "content", "")}
+                if getattr(m, "tool_calls", None):
+                    msg_dict["tool_calls"] = m.tool_calls
+                messages.append(msg_dict)
         
         response = client.chat.complete(
             model="mistral-small-latest",
