@@ -12,7 +12,7 @@ def data_imputation(method: str, symbol: str):
         data_imputed = st.session_state['data'].copy()
         column_name = symbol
         
-        # 1. SMART ERROR REPORTING: Tell Mistral if it guessed the wrong column
+        # SMART ERROR REPORTING
         available_cols = data_imputed.columns.tolist()
         if column_name not in available_cols:
             return f"ERROR: Column '{column_name}' not found. Available columns are: {available_cols}. Please try the tool again with the exact column name."
@@ -22,24 +22,38 @@ def data_imputation(method: str, symbol: str):
 
         method = method.lower().replace(" ", "").replace("_", "")
 
-        if method == 'spline':
-            data_series_imputed = data_series.interpolate(method='spline', order=2, limit_direction='both')
+        # 1. Native Directional Fills (Works on text and numbers)
+        if method in ['bfill', 'backward']:
+            data_series_imputed = data_series.bfill()
             data_imputed.loc[missing_indexes, column_name] = data_series_imputed
-        elif method in ['bfill', 'backward']:
-            data_series_imputed = data_series.interpolate(method='bfill')
-            data_imputed.loc[missing_indexes, column_name] = data_series_imputed
+            
         elif method in ['ffill', 'forward']:
-            data_series_imputed = data_series.interpolate(method='ffill')
+            data_series_imputed = data_series.ffill()
             data_imputed.loc[missing_indexes, column_name] = data_series_imputed
+            
+        # 2. Mathematical Fills (Forced numeric conversion to prevent crashes)
+        elif method == 'spline':
+            numeric_series = pd.to_numeric(data_series, errors='coerce')
+            data_series_imputed = numeric_series.interpolate(method='spline', order=2, limit_direction='both')
+            data_imputed.loc[missing_indexes, column_name] = data_series_imputed
+            
         elif method == 'mean':
-            data_imputed[column_name] = data_imputed[column_name].fillna(data_imputed[column_name].mean())
+            numeric_val = pd.to_numeric(data_imputed[column_name], errors='coerce').mean()
+            data_imputed[column_name] = data_imputed[column_name].fillna(numeric_val)
+            
+        elif method == 'min':
+            numeric_val = pd.to_numeric(data_imputed[column_name], errors='coerce').min()
+            data_imputed[column_name] = data_imputed[column_name].fillna(numeric_val)
+            
+        elif method == 'max':
+            numeric_val = pd.to_numeric(data_imputed[column_name], errors='coerce').max()
+            data_imputed[column_name] = data_imputed[column_name].fillna(numeric_val)
+            
+        # 3. Categorical Fill
         elif method == 'mode':
             mode_value = data_imputed[column_name].mode().iloc[0]
             data_imputed.loc[data_imputed[column_name].isnull(), column_name] = mode_value
-        elif method == 'min':
-            data_imputed[column_name] = data_imputed[column_name].fillna(data_imputed[column_name].min())
-        elif method == 'max':
-            data_imputed[column_name] = data_imputed[column_name].fillna(data_imputed[column_name].max())
+            
         else:
             return f"ERROR: Invalid imputation method '{method}'."
 
