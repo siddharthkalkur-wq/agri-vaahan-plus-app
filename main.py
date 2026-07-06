@@ -45,7 +45,13 @@ if "chat_history" not in st.session_state:
     st.session_state["chat_history"] = []
 
 for msg in st.session_state["chat_history"]:
-    st.chat_message(msg["role"]).write(msg["content"])
+    # Safely extract data whether it is a standard dictionary or a Mistral Object
+    role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", "")
+    content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+    
+    # Only draw the UI for actual text messages, keeping background tool calls hidden
+    if role in ["user", "assistant"] and content:
+        st.chat_message(role).write(content)
 
 prompt = st.chat_input("Query here")
 
