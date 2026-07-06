@@ -27,12 +27,14 @@ if uploaded_file is not None:
     else:
         df = pd.read_excel(uploaded_file, header=header_row)
 
-    if st.session_state['data'] is None:
+    # Force a data refresh if it's a newly uploaded file
+    if "last_uploaded_file" not in st.session_state or st.session_state["last_uploaded_file"] != uploaded_file.name:
         st.session_state['data'] = df.copy()
-    st.success("File uploaded successfully!")
+        st.session_state["last_uploaded_file"] = uploaded_file.name
+        st.success("File uploaded and data refreshed successfully!")
 
 if st.session_state['data'] is not None:
-    st.write(st.session_state['data']) 
+    st.write(st.session_state['data'])
 
 ########################## 2. MISTRAL CLOUD MODEL
 if "mistral_client" not in st.session_state:
@@ -110,8 +112,12 @@ if prompt and "mistral_client" in st.session_state:
                 
                 # Convert whatever your function returns into a string message for Mistral
                 if isinstance(result_df_or_val, pd.DataFrame):
-                    tool_content = f"Tool executed successfully. Current shape of dataframe is {result_df_or_val.shape}."
+                    if result_df_or_val.shape == (0, 0):
+                        tool_content = "ERROR: The tool failed or returned a completely empty dataframe. Please check your parameters and try again."
+                    else:
+                        tool_content = f"Tool executed successfully. Current shape of dataframe is {result_df_or_val.shape}."
                 else:
+                    # This safely passes our new text error messages directly to Mistral!
                     tool_content = str(result_df_or_val)
                 
                 # IMPORTANT: Append the tool response back so Mistral knows it worked!
