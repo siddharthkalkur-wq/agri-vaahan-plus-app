@@ -105,8 +105,12 @@ if prompt and "mistral_client" in st.session_state:
                     result_df_or_val = data_imputation(**args)
                 elif func_name == "data_visualization":
                     result_df_or_val = data_visualization(**args)
-                    if result_df_or_val is not None and not isinstance(result_df_or_val, pd.DataFrame):
-                        st.plotly_chart(result_df_or_val)
+                    # ❇️ NEW: Ensure tables from visualization actually draw on your web screen
+                    if result_df_or_val is not None:
+                        if isinstance(result_df_or_val, pd.DataFrame):
+                            st.dataframe(result_df_or_val)
+                        else:
+                            st.plotly_chart(result_df_or_val)
                 elif func_name == "time_series_forecasting":
                     result_df_or_val = time_series_forecasting(**args)
                 
@@ -114,10 +118,13 @@ if prompt and "mistral_client" in st.session_state:
                 if isinstance(result_df_or_val, pd.DataFrame):
                     if result_df_or_val.shape == (0, 0):
                         tool_content = "ERROR: The tool failed or returned a completely empty dataframe. Please check your parameters and try again."
+                    elif func_name in ["data_visualization", "time_series_forecasting"]:
+                        # ❇️ NEW: Feed the actual small summary tables directly to Mistral so it can read the numbers!
+                        tool_content = f"Tool executed successfully. Here is the exact data:\n{result_df_or_val.to_string()}"
                     else:
+                        # For massive dataset changes (cleaning/imputing), only send the shape to save API limits
                         tool_content = f"Tool executed successfully. Current shape of dataframe is {result_df_or_val.shape}."
                 else:
-                    # This safely passes our new text error messages directly to Mistral!
                     tool_content = str(result_df_or_val)
                 
                 # IMPORTANT: Append the tool response back so Mistral knows it worked!
