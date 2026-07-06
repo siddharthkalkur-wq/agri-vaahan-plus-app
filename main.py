@@ -69,27 +69,61 @@ if prompt and "mistral_client" in st.session_state:
         
         response_msg = response.choices[0].message
         
-        # Check if the AI wants to run a function
+        # 3. Check if the AI wants to run a function
         if response_msg.tool_calls:
+            # We add Mistral's request to run a tool to our chat history
+            st.session_state["chat_history"].append(response_msg)
+            
             for tool_call in response_msg.tool_calls:
                 func_name = tool_call.function.name
                 args = json.loads(tool_call.function.arguments)
                 
                 st.info(f"⚙️ Running automated tool: {func_name}")
                 
-                # Execute the correct function
+                # Execute the correct function and capture the output
+                result_df_or_val = None
                 if func_name == "data_cleaning":
-                    data_cleaning(**args)
+                    result_df_or_val = data_cleaning(**args)
                 elif func_name == "data_imputation":
-                    data_imputation(**args)
+                    result_df_or_val = data_imputation(**args)
                 elif func_name == "data_visualization":
-                    fig = data_visualization(**args)
-                    if fig is not None and not isinstance(fig, pd.DataFrame):
-                        st.plotly_chart(fig)
+                    result_df_or_val = data_visualization(**args)
+                    if result_df_or_val is not None and not isinstance(result_df_or_val, pd.DataFrame):
+                        st.plotly_chart(result_df_or_val)
                 elif func_name == "time_series_forecasting":
-                    time_series_forecasting(**args)
+                    result_df_or_val = time_series_forecasting(**args)
                 
-                st.session_state["chat_history"].append({"role": "assistant", "content": f"Executed {func_name} successfully."})
+                # Convert whatever your function returns into a string message for Mistral
+                if isinstance(result_df_or_val, pd.DataFrame):
+                    tool_content = f"Tool executed successfully. Current shape of dataframe is {result_df_or_val.shape}."
+                else:
+                    tool_content = str(result_df_or_val)
+                
+                # IMPORTANT: Append the tool response back so Mistral knows it worked!
+                st.session_state["chat_history"].append({
+                    "role": "tool",
+                    "name": func_name,
+                    "content": tool_content,
+                    "tool_call_id": tool_call.id
+                })
+            
+            # ❇️ LOOP CLOSURE: Call Mistral again, passing the data results back
+            with st.spinner("Formulating final agricultural advisory..."):
+                final_messages = []
+                for m in st.session_state["chat_history"]:
+                    if isinstance(m, dict):
+                        final_messages.append(m)
+                    else:  # Handles Mistral native Message objects safely
+                        final_messages.append({"role": m.role, "content": m.content, "tool_calls": m.tool_calls})
+                
+                final_response = client.chat.complete(
+                    model="mistral-small-latest",
+                    messages=final_messages
+                )
+                
+                final_text = final_response.choices[0].message.content
+                st.chat_message("assistant").write(final_text)
+                st.session_state["chat_history"].append({"role": "assistant", "content": final_text})
                 
         # If no tool is called, output standard text
         elif response_msg.content:
